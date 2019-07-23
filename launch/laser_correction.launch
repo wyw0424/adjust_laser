@@ -3,7 +3,7 @@
   <!--param name="use_sim_time" value="true" /-->
   <arg name="dataset" /> 
 
-  <node pkg="laser_slam" name="laser_correction" type="laser_correction" output="screen">
+  <node pkg="laser_process" name="laser_correction" type="laser_correction" output="screen">
     <param name="pointcloud_topic" value="/velodyne_points" />
     <param name="imu_topic" value="/imu/data" />
     <param name="downsample_resolution" value="0.1" />

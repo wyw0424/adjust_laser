@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>laser_slam</name>
+  <name>laser_process</name>
   <version>0.0.1</version>
   <description>laser slam node.</description>
   <author>wyw</author>
