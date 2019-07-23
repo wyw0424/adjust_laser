@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>laser_slam</name>
+  <version>0.0.1</version>
+  <description>laser slam node.</description>
+  <author>wyw</author>
+  <maintainer email="wangyuwei@ydrobot.com">wyw</maintainer>
+  <url type="website">http://</url>
+
+  <license>None</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>rosconsole_bridge</depend>
+  <depend>roscpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>roscpp_serialization</depend>
+  <depend>point_cloud_odometry</depend>
+  <depend>point_cloud_filter</depend>
+  <depend>sensor_msgs</depend>
+  <depend>ndt_omp</depend>
+
+</package>

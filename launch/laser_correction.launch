@@ -1,0 +1,16 @@
+<launch>
+
+  <!--param name="use_sim_time" value="true" /-->
+  <arg name="dataset" /> 
+
+  <node pkg="laser_slam" name="laser_correction" type="laser_correction" output="screen">
+    <param name="pointcloud_topic" value="/velodyne_points" />
+    <param name="imu_topic" value="/imu/data" />
+    <param name="downsample_resolution" value="0.1" />
+    <param name="scan_period" value="0.1" />
+    <param name="use_ndt" value="false" />
+    <param name="use_icp" value="false" />
+    <param name="adjust_distortion" value="true" />
+  </node>
+	<!--node pkg="tf" type="static_transform_publisher" name="odom_velodyne_broadcaster" args="0 0 0 0 0 0 /odom /velodyne 100"/-->
+</launch>

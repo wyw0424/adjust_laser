@@ -1,0 +1,30 @@
+<launch>
+
+  <!--param name="use_sim_time" value="true" /-->
+  <arg name="dataset" /> 
+
+  <param name="frame_id/fixed" value="map" />
+  <param name="frame_id/odometry" value="odom" />
+  <param name="init/position/x" value="0.0" />
+  <param name="init/position/y" value="0.0" />
+  <param name="init/position/z" value="0.0" />
+  <param name="init/orientation/roll" value="0.0" />
+  <param name="init/orientation/pitch" value="0.0" />
+  <param name="init/orientation/yaw" value="0.0" />
+
+  <rosparam file="$(find point_cloud_filter)/config/parameters.yaml" command="load"/>
+  <rosparam file="$(find point_cloud_odometry)/config/parameters.yaml" command="load"/>
+
+  <node pkg="laser_slam" name="slam_front_end_ros_node" type="slam_front_end_ros_node" output="screen">
+    <param name="pose_topic" value="/odom_localization" />
+    <param name="pointcloud_topic" value="/velodyne_points" />
+    <param name="imu_topic" value="/imu/data" />
+    <param name="downsample_resolution" value="0.1" />
+    <param name="scan_period" value="0.1" />
+    <param name="use_ndt" value="false" />
+    <param name="use_icp" value="false" />
+    <param name="adjust_distortion" value="true" />
+    <param name="map_name" value="/home/derek/Desktop/yanqing_20.pcd" />
+  </node>
+	<!--node pkg="tf" type="static_transform_publisher" name="odom_velodyne_broadcaster" args="0 0 0 0 0 0 /odom /velodyne 100"/-->
+</launch>
