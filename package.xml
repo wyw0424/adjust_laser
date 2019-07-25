@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>laser_process</name>
+  <name>adjust_laser</name>
   <version>0.0.1</version>
-  <description>laser slam node.</description>
+  <description>adjust_laser node.</description>
   <author>wyw</author>
-  <maintainer email="wangyuwei@ydrobot.com">wyw</maintainer>
+  <maintainer email="diracweizi@163.com">wyw</maintainer>
   <url type="website">http://</url>
 
   <license>None</license>

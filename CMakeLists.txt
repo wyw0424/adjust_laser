@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(laser_process)
+project(adjust_laser)
 
 find_package(Eigen3 REQUIRED)
 
