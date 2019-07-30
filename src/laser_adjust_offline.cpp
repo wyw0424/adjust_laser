@@ -139,7 +139,7 @@ public:
 
 laser_adjust_offline::laser_adjust_offline()
 : first_cloud_(true)
-, scan_period_(0.1)
+, scan_period_(0.05)
 , pc_count_(0)
 , laser_count_(0)
 , imu_count_(0)
@@ -490,7 +490,7 @@ void laser_adjust_offline::update()
                 ros::Duration off_time = imu_curr_time -laser_curr_time;
                 write_bag.write(imu_topic_, imu_curr_time, imu_curr);
                 update_imu_data(imu_curr);
-                if(off_time > ros::Duration(0.09))
+                if(off_time > ros::Duration(scan_period_-0.001))
                 {
                   inside_one_laser_ = false;
                 }

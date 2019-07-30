@@ -7,7 +7,7 @@
     <param name="pointcloud_topic" value="/velodyne_points" />
     <param name="imu_topic" value="/imu/data" />
     <param name="downsample_resolution" value="0.1" />
-    <param name="scan_period" value="0.1" />
+    <param name="scan_period" value="0.05" />
     <param name="adjust_distortion" value="true" />
     <param name="publish_undistored_pc2" value="false" />
     <param name="save_result" value="false" />
