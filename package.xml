@@ -14,8 +14,7 @@
   <depend>roscpp</depend>
   <depend>geometry_msgs</depend>
   <depend>roscpp_serialization</depend>
-  <depend>point_cloud_odometry</depend>
-  <depend>point_cloud_filter</depend>
+  <depend>rosbag</depend>
   <depend>sensor_msgs</depend>
   <depend>ndt_omp</depend>
 

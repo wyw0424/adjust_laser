@@ -22,10 +22,9 @@ find_package(catkin REQUIRED COMPONENTS
 			sensor_msgs
 			cv_bridge
 			pcl_conversions
-            point_cloud_filter
-            point_cloud_odometry
 			pcl_ros
             ndt_omp
+            rosbag
             geometry_msgs
 )
 catkin_package(CATKIN_DEPENDS roscpp)
@@ -35,10 +34,13 @@ message(STATUS " version:${OpenCV_VERSION}")
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
 
-add_executable(slam_front_end_ros_node src/slam_front_end_ros.cpp)
-target_link_libraries(slam_front_end_ros_node ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+#add_executable(slam_front_end_ros_node src/slam_front_end_ros.cpp)
+#target_link_libraries(slam_front_end_ros_node ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
 add_executable(laser_correction src/laser_correction.cpp)
 target_link_libraries(laser_correction ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+
+add_executable(laser_adjust_offline src/laser_adjust_offline.cpp)
+target_link_libraries(laser_adjust_offline ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
 set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11")

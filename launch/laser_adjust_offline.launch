@@ -1,0 +1,18 @@
+<launch>
+
+  <!--param name="use_sim_time" value="true" /-->
+  <arg name="dataset" /> 
+
+  <node pkg="adjust_laser" name="laser_adjust_offline" type="laser_adjust_offline" output="screen">
+    <param name="pointcloud_topic" value="/velodyne_points" />
+    <param name="imu_topic" value="/imu/data" />
+    <param name="downsample_resolution" value="0.1" />
+    <param name="scan_period" value="0.1" />
+    <param name="adjust_distortion" value="true" />
+    <param name="publish_undistored_pc2" value="false" />
+    <param name="save_result" value="false" />
+    <param name="input_bag" value="/media/derek/84ebc5a9-1bfa-40f3-8fe6-c604908c6f97/derek/data/data_2019-07-29-14-54-25.bag" />
+    <param name="output_bag" value="/media/derek/84ebc5a9-1bfa-40f3-8fe6-c604908c6f97/derek/data/data_2019-07-29-14-54-25_adjusted.bag" />
+  </node>
+	<!--node pkg="tf" type="static_transform_publisher" name="odom_velodyne_broadcaster" args="0 0 0 0 0 0 /odom /velodyne 100"/-->
+</launch>

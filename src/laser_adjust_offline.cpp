@@ -33,19 +33,21 @@
 
 #include <pthread.h>
 #include <pclomp/ndt_omp.h>
-#include <pclomp/gicp_omp.h>
-
 
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
+
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH
 
 
 typedef pcl::PointCloud<pcl::PointXYZ> pcl_cloud;
 
 using PointT = pcl::PointXYZ;
-using pcl::GeneralizedIterativeClosestPoint;
 
-class laser_correction
+class laser_adjust_offline
 {
 
 private:
@@ -67,12 +69,16 @@ private:
   double scan_period_;
   double downsample_resolution_;
   bool first_cloud_;
-  bool use_ndt_;
-  bool use_icp_;
-  bool adjust_distortion_;
+  bool inside_one_laser_;
+  bool publish_undistored_pc2_;
+  bool save_result_;
   int pc_count_;
+  int imu_count_;
+  int laser_count_;
 
   std::string target_frame_;
+  std::string pointcloud_topic_, imu_topic_;
+  std::string input_bag_, output_bag_;
 
   pcl::PointCloud<PointT>::Ptr globalmap_;
   std::mutex registration_mutex;
@@ -122,48 +128,49 @@ private:
 
 public:
 
-  laser_correction();
-  ~laser_correction();
+  laser_adjust_offline();
+  ~laser_adjust_offline();
 
-  void adjustDistortion(pcl::PointCloud<PointT>::Ptr &cloud, double scan_time);
+  sensor_msgs::PointCloud2 adjustDistortion(pcl::PointCloud<PointT>::Ptr &cloud, double scan_time);
   void update_imu_data(sensor_msgs::Imu::Ptr imu_curr);
-  void imuCallback(const sensor_msgs::ImuConstPtr &msg);
-  void laserCallback(const sensor_msgs::PointCloud2::ConstPtr& data);
   void update();
 
 };
 
-laser_correction::laser_correction()
-: use_ndt_(false)
-, use_icp_(false)
-, first_cloud_(true)
+laser_adjust_offline::laser_adjust_offline()
+: first_cloud_(true)
 , scan_period_(0.1)
 , pc_count_(0)
+, laser_count_(0)
+, imu_count_(0)
+, publish_undistored_pc2_(false)
+, save_result_(false)
 {
   // parameters
-  std::string pointcloud_topic, imu_topic;
+
   std::string globalmap_pcd;
-  ros::param::get("/laser_correction/pointcloud_topic", pointcloud_topic);
-  ros::param::get("/laser_correction/imu_topic", imu_topic);
-  ros::param::get("/laser_correction/map_name", globalmap_pcd);
-  ros::param::get("/laser_correction/use_icp", use_icp_);
-  ros::param::get("/laser_correction/use_ndt", use_ndt_);
-  ros::param::get("/laser_correction/adjust_distortion", adjust_distortion_);
-  ros::param::get("/laser_correction/downsample_resolution", downsample_resolution_);
-  ros::param::get("/laser_correction/scan_period", scan_period_);
+  ros::param::get("/laser_adjust_offline/pointcloud_topic", pointcloud_topic_);
+  ros::param::get("/laser_adjust_offline/imu_topic", imu_topic_);
+  ros::param::get("/laser_adjust_offline/map_name", globalmap_pcd);
+  ros::param::get("/laser_adjust_offline/downsample_resolution", downsample_resolution_);
+  ros::param::get("/laser_adjust_offline/scan_period", scan_period_);
+  ros::param::get("/laser_adjust_offline/publish_undistored_pc2", publish_undistored_pc2_);
+  ros::param::get("/laser_adjust_offline/save_result", save_result_);
+  ros::param::get("/laser_adjust_offline/input_bag", input_bag_);
+  ros::param::get("/laser_adjust_offline/output_bag", output_bag_);
   // subscribers
-  pc_sub_ = node_.subscribe<sensor_msgs::PointCloud2> ("/velodyne_points", 5, boost::bind(&laser_correction::laserCallback, this, _1));
-  imu_sub_ = node_.subscribe<sensor_msgs::Imu> ("/imu/data", 5, boost::bind(&laser_correction::imuCallback, this, _1));
-  // pc_sub_ = node_.subscribe<sensor_msgs::PointCloud2> ("/velodyne_points", 1, &laser_correction::laserCallback, this);
-  // imu_sub_ = node_.subscribe<sensor_msgs::Imu> ("/imu/data", 1, &laser_correction::imuCallback, this);
+
+  // pc_sub_ = node_.subscribe<sensor_msgs::PointCloud2> ("/velodyne_points", 1, &laser_adjust_offline::laserCallback, this);
+  // imu_sub_ = node_.subscribe<sensor_msgs::Imu> ("/imu/data", 1, &laser_adjust_offline::imuCallback, this);
 
   // publishers
   //image_pub_ = node_.advertise<sensor_msgs::Image>("/image", 1);
-  filter_pub_ = node_.advertise<sensor_msgs::PointCloud2> ("filter_cloud", 1);
-  odom_pub_ = node_.advertise<geometry_msgs::PoseStamped> ("odom_out", 1);
-  pub_undistorted_pc_ = node_.advertise<sensor_msgs::PointCloud2>("/undistorted_pc", 1);
+  if(publish_undistored_pc2_)
+  {
+    pub_undistorted_pc_ = node_.advertise<sensor_msgs::PointCloud2>("/undistorted_pc", 1);
+  }
   // Services
-  //clear_num_service_ = node_.advertiseService("/image_process/clear_num_service", &laser_correction::clear_num_service, this);
+  //clear_num_service_ = node_.advertiseService("/image_process/clear_num_service", &laser_adjust_offline::clear_num_service, this);
 
 
   out_odom_.header.frame_id = "velodyne";
@@ -216,9 +223,11 @@ laser_correction::laser_correction()
                      0.0, 0.0, -1.0;
 
   std::cout << imu_ENU_to_NED_ << std::endl;
+
+  inside_one_laser_ = true;
 }
 
-laser_correction::~laser_correction()
+laser_adjust_offline::~laser_adjust_offline()
 {
   //cloud_buffer_.clear();
 }
@@ -229,15 +238,18 @@ laser_correction::~laser_correction()
  * @brief 参考 loam 的点云去运动畸变（基于匀速运动假设）
  * 
  */
-void laser_correction::adjustDistortion(pcl::PointCloud<PointT>::Ptr &cloud, double scan_time)
+sensor_msgs::PointCloud2 laser_adjust_offline::adjustDistortion(pcl::PointCloud<PointT>::Ptr &cloud, double scan_time)
 {
   pcl::PCDWriter writer;
   pc_count_ ++;
   std::stringstream count;
   count<<pc_count_; 
-  std::string origin_name = "/home/yd/Desktop/pc/origin/";
-  origin_name =  origin_name+count.str()+".pcd";
-  writer.write<pcl::PointXYZ> (origin_name, *cloud, true);
+  if(save_result_)
+  {
+    std::string origin_name = "/home/derek/Desktop/pc/origin/";
+    origin_name =  origin_name+count.str()+".pcd";
+    writer.write<pcl::PointXYZ> (origin_name, *cloud, true);
+  }
 
   bool half_passed = false;
   int cloud_size = cloud->points.size();
@@ -363,20 +375,25 @@ void laser_correction::adjustDistortion(pcl::PointCloud<PointT>::Ptr &cloud, dou
     imu_ptr_last_iter_ = imu_ptr_front_;
   }
 
-  if (pub_undistorted_pc_.getNumSubscribers() > 0)
+  if(save_result_)
   {
-    sensor_msgs::PointCloud2 msg;
-    pcl::toROSMsg(*cloud, msg);
-    msg.header.stamp.fromSec(scan_time);
-    msg.header.frame_id = "/velodyne";
-    pub_undistorted_pc_.publish(msg);
+    std::string adjust_name = "/home/derek/Desktop/pc/adjusted/";
+    adjust_name =  adjust_name + count.str()+".pcd";
+    writer.write<pcl::PointXYZ> (adjust_name, *cloud, true);
   }
-  std::string adjust_name = "/home/yd/Desktop/pc/adjusted/";
-  adjust_name =  adjust_name + count.str()+".pcd";
-  writer.write<pcl::PointXYZ> (adjust_name, *cloud, true);
+
+  sensor_msgs::PointCloud2 adjusted_pc2;
+  pcl::toROSMsg(*cloud, adjusted_pc2);
+  adjusted_pc2.header.stamp.fromSec(scan_time);
+  adjusted_pc2.header.frame_id = "/velodyne";
+  if (publish_undistored_pc2_)
+  {
+    pub_undistorted_pc_.publish(adjusted_pc2);
+  }
+  return adjusted_pc2;
 }
 
-void laser_correction::update_imu_data(sensor_msgs::Imu::Ptr imu_curr)
+void laser_adjust_offline::update_imu_data(sensor_msgs::Imu::Ptr imu_curr)
 {
   double roll, pitch, yaw;
   tf::Quaternion orientation;
@@ -433,88 +450,78 @@ void laser_correction::update_imu_data(sensor_msgs::Imu::Ptr imu_curr)
   }
 }
 
-void laser_correction::imuCallback(const sensor_msgs::ImuConstPtr &msg)
+void laser_adjust_offline::update()
 {
-  sensor_msgs::Imu::Ptr imu (new sensor_msgs::Imu);
-  *imu = *msg;
-  imu_lock_.lock();
-  imu_buffer_.push(imu);
-  imu_lock_.unlock();
-}
+    rosbag::Bag bag;
+    rosbag::Bag write_bag;
+    bag.open(input_bag_, rosbag::bagmode::Read);
+    write_bag.open(output_bag_, rosbag::bagmode::Write);
 
-// PointCloud2 call back
-void laser_correction::laserCallback(const sensor_msgs::PointCloud2::ConstPtr& data)
-{
-  sensor_msgs::PointCloud2::Ptr cloud (new sensor_msgs::PointCloud2);
-  *cloud = *data;
-  buffer_lock.lock();
-  cloud_buffer_.push(cloud);
-  buffer_lock.unlock();
-  //std::cout << "Buffer Size: " << cloud_buffer_.size() << std::endl;
-}
-
-void laser_correction::update()
-{
-  if (cloud_buffer_.size() > 0)
-  {
+    rosbag::View view_laser(bag, rosbag::TopicQuery(pointcloud_topic_));
+    rosbag::View view_imu(bag, rosbag::TopicQuery(imu_topic_));
+    ros::Time imu_curr_time;
+    ros::Time laser_curr_time;
     pcl_cloud::Ptr curr_cloud (new pcl_cloud() );
-    std::cout << "cloud Size: " << cloud_buffer_.size() << std::endl;
-    buffer_lock.lock();
-    sensor_msgs::PointCloud2::Ptr cloud = cloud_buffer_.front();
-    cloud_buffer_.pop();
-    buffer_lock.unlock();
-
-    double current_laser_time = cloud->header.stamp.toSec();
-
-    while(imu_buffer_.size()>0)
+    foreach(rosbag::MessageInstance const m, view_imu)
     {
-      std::cout << "imu Size: " << imu_buffer_.size() << std::endl;
-      imu_lock_.lock();
-      sensor_msgs::Imu::Ptr imu_curr = imu_buffer_.front();
-      imu_buffer_.pop();
-      imu_lock_.unlock();
-      if(imu_curr->header.stamp.toSec() - current_laser_time > scan_period_)
-      {
-        continue;
-      }
-      else
-      {
-        update_imu_data(imu_curr);
-      }
+        sensor_msgs::Imu::Ptr imu = m.instantiate<sensor_msgs::Imu>();
+        if (imu != NULL)
+            imu_buffer_.push(imu);
+            imu_count_++;
     }
 
-    // Convert ROS -> PCL
-    pcl::fromROSMsg(*cloud, *curr_cloud);
-
-    // pcl::PointCloud<PointT>::Ptr msg_filtered(new pcl::PointCloud<PointT>);
-    // filter_.Filter(curr_cloud, msg_filtered);
-
-    // if(first_cloud_)
-    // {
-    //   last_cloud_ = msg_filtered;
-    //   first_cloud_ = false;
-    // }
-
-    if (adjust_distortion_)
+    foreach(rosbag::MessageInstance const m, view_laser)
     {
-      adjustDistortion(curr_cloud, cloud->header.stamp.toSec());
+        sensor_msgs::PointCloud2::ConstPtr laser = m.instantiate<sensor_msgs::PointCloud2>();
+        if (laser != NULL)
+        {
+            pcl::fromROSMsg(*laser, *curr_cloud);
+            laser_curr_time = laser->header.stamp;
+            inside_one_laser_ = true;
+            laser_count_++;
+            std::cout << "Processing laser: " << laser_count_ << std::endl;
+            while(inside_one_laser_)
+            {
+              if(imu_buffer_.size()>0)
+              {
+                sensor_msgs::Imu::Ptr imu_curr = imu_buffer_.front();
+                imu_buffer_.pop();
+                imu_curr_time = imu_curr->header.stamp;
+                ros::Duration off_time = imu_curr_time -laser_curr_time;
+                write_bag.write(imu_topic_, imu_curr_time, imu_curr);
+                update_imu_data(imu_curr);
+                if(off_time > ros::Duration(0.09))
+                {
+                  inside_one_laser_ = false;
+                }
+              }else
+              {
+                inside_one_laser_ = false;
+              }
+            }
+            std::cout << "laser time: " << laser_curr_time << " imu time: " << imu_curr_time << std::endl;
+            sensor_msgs::PointCloud2 adjusted_pc2 = adjustDistortion(curr_cloud, laser_curr_time.toSec());
+            write_bag.write(pointcloud_topic_, adjusted_pc2.header.stamp, adjusted_pc2);
+        }
     }
 
-  }
-
+    std::cout << "Total imu: " << imu_count_ << std::endl;
+    std::cout << "Total laser: " << laser_count_ << std::endl;
+    bag.close();
+    write_bag.close();
 }
 
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "laser_correction");
-  laser_correction node;
+  ros::init(argc, argv, "laser_adjust_offline");
+  laser_adjust_offline node;
 
   ROS_INFO("slam front end ros node started...");
 
   ros::Rate rate(100);
 
-  while(ros::ok())
+  //while(ros::ok())
   {
     ros::spinOnce();
     node.update();
